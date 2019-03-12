@@ -1,52 +1,92 @@
-import cv2 as cv
+import time
+ 
+import cv2
 import numpy as np
-import os
-#from matplotlib import pyplot as plt
-#read the reference row image
-row = cv.imread("row.jpg")
-#Start videocapture from web cam(0)
-cap = cv.VideoCapture(0)
-MatchesCounter =0
-while(True):
-    #Capture frame-by-frame
-    ret,frame = cap.read()
-    #turn the image to gray scale
-    img_gray = cv.cvtColor(frame,cv.COLOR_BGR2GRAY)
-    kernel = np.ones((5,5),np.float32)/25
+from imutils.video import VideoStream
+import imutils
+import serial
 
-    #dst = cv.filter2D(img_gray,-1,kernel)
-    #dst_bgr = cv.filter2D(frame,-1,kernel)
-    #canny = cv.Canny(dst,20,150)
-    canny = cv.Canny(img_gray,50,150)
-    #Obtain values of canny
-    height, width, channels= frame.shape
-    #draw only contours
+# configure the serial connections (the parameters differs on the device you are connecting to)
+ser = serial.Serial(
+    port='/dev/ttyACM0',
+    baudrate=9600,
+    parity=serial.PARITY_ODD,
+    stopbits=serial.STOPBITS_TWO,
+    bytesize=serial.SEVENBITS
+)
+
+ser.isOpen()
+ 
+# Are we using the Pi Camera?
+usingPiCamera = False
+# Set initial frame size.
+frameSize = (360, 360)
+ 
+# Initialize mutithreading the video stream.
+vs = VideoStream(src=0, usePiCamera=usingPiCamera, resolution=frameSize,
+        framerate=3).start()
+# Allow the camera to warm up.
+time.sleep(2.0)
+ 
+timeCheck = time.time()
+while True:
+    # Get the next frame.
+    frame = vs.read()
     
-    contours = np.zeros((height , width, channels), dtype = "uint8")
-    ret, thresh = cv.threshold(canny, 50, 150, 0)
-    c, hierarchy = cv.findContours(thresh, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
-    #c = imutils.grab_contours(c)
-    c = sorted(c,key =cv.contourArea, reverse=True)
-    cv.imshow('canny',canny)
-    cv.imshow('frame',frame)
-    siz = len(c)
-    i =0
-#     while(i<siz):
-#             contours = np.zeros((height , width, channels), dtype = "uint8")
-#             cv.drawContours(contours, c, i, (0,255,0), 1)
-#             #First check it matches 
-#             #cv.phaseCorrelate(row,contours)
+    # If using a webcam instead of the Pi Camera,
+    # we take the extra step to change frame size.
+    if not usingPiCamera:
+        frame = imutils.resize(frame, width=frameSize[0])
+     
+    #frame = cv2.GaussianBlur(frame, (7, 7), 1.41)
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    
+    
+    #define range of blue color in HSV
+    lower_blue = np.array([101,50,50])
+    upper_blue = np.array([130,255,255])
+    mask = cv2.inRange(hsv,lower_blue,upper_blue)
+    
+    #bitwise-AND mask and original image
+    #res = cv2.bitwise_and(frame,frame,mask = mask)
+    
+    ret,thresh = cv2.threshold(mask,127,255,1)
 
-#             #display the resulting frame
-#             if cv.waitKey(1) & 0xFF == ord('a'):        
-#                 cv.imshow('contours',contours)
-#                 i=i+1
-#             elif cv.waitKey(1) & 0xFF == ord('z'):
-#                 break;
+    _,contours,h = cv2.findContours(thresh,1,2)
 
+    for cnt in contours:
+        approx = cv2.approxPolyDP(cnt,0.01*cv2.arcLength(cnt,True),True)
+        
+        if len(approx)== 7:
+            approx_length = approx[1][0][0] - approx[3][0][0];
+            if approx_length >= 30:
+                print ("approx_length: ", approx_length)
+                print("derecha")
+                b = bytes('1', 'utf-8')
+                ser.write(b)
+            elif approx_length < -30:
+                print ("approx_length: ", approx_length)
+                print("izquierda")
+                b = bytes('2', 'utf-8')
+                ser.write(b)
+            cv2.drawContours(mask,[cnt],0,255,-1)
+            
 
-    if cv.waitKey(1) & 0xFF == ord('q'):
-            break
-cap.release()
-cv.destroyAllWindows()
+    # Show video stream
+    cv2.imshow('original', frame)
+    cv2.imshow('gray', gray)
+    cv2.imshow('mask', mask)
+    key = cv2.waitKey(50) & 0xFF
+ 
+    # if the `q` key was pressed, break from the loop.
+    if key == ord("q"):
+        break
+    #time.sleep(0.5)
+    #print(1/(time.time() - timeCheck))
+    #timeCheck = time.time()
+ 
+# Cleanup before exit.
+cv2.destroyAllWindows()
+vs.stop()
 
