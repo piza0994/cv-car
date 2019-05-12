@@ -10,11 +10,10 @@ import serial
 ser = serial.Serial(
     port='/dev/ttyACM0',
     baudrate=9600,
-    parity=serial.PARITY_ODD,
-    stopbits=serial.STOPBITS_TWO,
-    bytesize=serial.SEVENBITS
+    bytesize=8,
+    parity='N',
+    stopbits=1
 )
-
 ser.isOpen()
  
 # Are we using the Pi Camera?
@@ -44,8 +43,8 @@ while True:
     
     
     #define range of blue color in HSV
-    lower_blue = np.array([101,50,50])
-    upper_blue = np.array([130,255,255])
+    lower_blue = np.array([0,100,100])
+    upper_blue = np.array([10,255,255])
     mask = cv2.inRange(hsv,lower_blue,upper_blue)
     
     #bitwise-AND mask and original image
@@ -63,19 +62,19 @@ while True:
             if approx_length >= 30:
                 print ("approx_length: ", approx_length)
                 print("derecha")
-                b = bytes('1', 'utf-8')
-                ser.write(b)
+                b = '1\n'
+                ser.write(b.encode())
             elif approx_length < -30:
                 print ("approx_length: ", approx_length)
                 print("izquierda")
-                b = bytes('2', 'utf-8')
-                ser.write(b)
-            cv2.drawContours(mask,[cnt],0,255,-1)
+                b = '2\n'
+                ser.write(b.encode())
+            cv2.drawContours(frame,[cnt],0,255,-1)
             
 
     # Show video stream
     cv2.imshow('original', frame)
-    cv2.imshow('gray', gray)
+    #cv2.imshow('gray', gray)
     cv2.imshow('mask', mask)
     key = cv2.waitKey(50) & 0xFF
  
@@ -89,4 +88,3 @@ while True:
 # Cleanup before exit.
 cv2.destroyAllWindows()
 vs.stop()
-
